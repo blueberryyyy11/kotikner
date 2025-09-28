@@ -14,8 +14,8 @@ from telegram.ext import (
 from telegram.constants import ChatType
 from telegram.error import TelegramError
 
-# Basic logging
-logging.basicConfig(level=logging.INFO)
+# Enhanced logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
 @dataclass
@@ -81,6 +81,9 @@ class DatabaseManager:
     async def store_message(self, msg: StoredMessage):
         conn = self.get_connection()
         try:
+            # Debug logging
+            logger.info(f"Storing message: ID={msg.message_id}, User={msg.username}, Type={msg.message_type}, Chat={msg.chat_id}")
+            
             conn.execute('''
                 INSERT OR REPLACE INTO messages 
                 (message_id, user_id, username, text, message_type, file_id, 
@@ -92,8 +95,12 @@ class DatabaseManager:
                 msg.chat_id
             ))
             conn.commit()
-        except sqlite3.IntegrityError:
-            pass  # Message already exists
+            logger.info(f"Message stored successfully: {msg.message_id}")
+            
+        except sqlite3.IntegrityError as e:
+            logger.warning(f"Message already exists: {msg.message_id} - {e}")
+        except Exception as e:
+            logger.error(f"Error storing message: {e}")
         finally:
             conn.close()
     
@@ -108,6 +115,7 @@ class DatabaseManager:
             ''', (chat_id, limit))
             
             rows = cursor.fetchall()
+            logger.info(f"Found {len(rows)} messages for chat {chat_id}")
             return [self._row_to_message(row) for row in rows]
         finally:
             conn.close()
@@ -226,6 +234,12 @@ class MinimalMemoryBot:
     async def store_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         message = update.message
         if not message or message.from_user.is_bot:
+            logger.info("Skipping bot message or empty message")
+            return
+        
+        # Only store messages from groups
+        if message.chat.type not in [ChatType.GROUP, ChatType.SUPERGROUP]:
+            logger.info("Skipping non-group message")
             return
         
         # Determine message type and data
@@ -252,6 +266,17 @@ class MinimalMemoryBot:
         elif message.sticker:
             message_type = "sticker"
             file_id = message.sticker.file_id
+        elif message.video_note:
+            message_type = "video_note"
+            file_id = message.video_note.file_id
+        elif message.animation:
+            message_type = "animation"
+            file_id = message.animation.file_id
+        
+        # Skip messages without content
+        if not text and not file_id and not caption:
+            logger.info("Skipping message without content")
+            return
         
         stored_msg = StoredMessage(
             message_id=message.message_id,
@@ -272,6 +297,7 @@ class MinimalMemoryBot:
         
         messages = await self.db.get_random_messages(chat_id, 50)
         if not messages:
+            logger.info(f"No messages found for chat {chat_id}")
             return
         
         selected_msg = random.choice(messages)
@@ -323,6 +349,16 @@ class MinimalMemoryBot:
                 await context.bot.send_sticker(
                     chat_id=chat_id,
                     sticker=msg.file_id
+                )
+                
+            elif msg.message_type == "animation" and msg.file_id:
+                caption = f"GIF memory from @{msg.username}"
+                if msg.caption:
+                    caption += f"\n\n{msg.caption}"
+                await context.bot.send_animation(
+                    chat_id=chat_id,
+                    animation=msg.file_id,
+                    caption=caption
                 )
                 
         except TelegramError as e:
@@ -517,9 +553,8 @@ class MinimalMemoryBot:
             await self.db.update_baby_photo(user_id, chat_id, file_id)
             
             await message.reply_text("📸 Baby photo saved for birthday celebrations!")
-            return
         
-        # Still store the photo as a regular message
+        # Always store the photo as a regular message too
         await self.store_message(update, context)
 
     async def button_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -583,6 +618,41 @@ class MinimalMemoryBot:
         selected_msg = random.choice(messages)
         await self._send_stored_message(context, selected_msg, chat_id)
 
+    async def debug_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Debug command to check database status"""
+        if update.effective_chat.type not in [ChatType.GROUP, ChatType.SUPERGROUP]:
+            await update.message.reply_text("This command only works in group chats.")
+            return
+        
+        chat_id = update.effective_chat.id
+        message_count = await self.db.count_messages(chat_id)
+        
+        # Get some recent messages to check
+        conn = self.db.get_connection()
+        try:
+            cursor = conn.execute('''
+                SELECT username, message_type, text, timestamp FROM messages 
+                WHERE chat_id = ? 
+                ORDER BY timestamp DESC 
+                LIMIT 5
+            ''', (chat_id,))
+            recent_messages = cursor.fetchall()
+        finally:
+            conn.close()
+        
+        debug_info = f"🔍 Debug Info for Chat {chat_id}:\n\n"
+        debug_info += f"Total messages stored: {message_count}\n\n"
+        
+        if recent_messages:
+            debug_info += "Recent messages:\n"
+            for msg in recent_messages:
+                timestamp = datetime.fromtimestamp(msg['timestamp']).strftime("%Y-%m-%d %H:%M")
+                debug_info += f"- {msg['username']} ({msg['message_type']}) at {timestamp}\n"
+        else:
+            debug_info += "No messages found in database.\n"
+        
+        await update.message.reply_text(debug_info)
+
     def run(self):
         application = Application.builder().token(self.token).build()
         
@@ -593,6 +663,7 @@ class MinimalMemoryBot:
                 BotCommand("menu", "Show main menu"),
                 BotCommand("birthday", "Set your birthday (MM-DD format)"),
                 BotCommand("random", "Send a random stored message"),
+                BotCommand("debug", "Show debug information"),
             ]
             await app.bot.set_my_commands(commands)
             logger.info("Bot commands set successfully")
@@ -604,6 +675,7 @@ class MinimalMemoryBot:
         application.add_handler(CommandHandler("menu", self.menu_command))
         application.add_handler(CommandHandler("birthday", self.birthday_command))
         application.add_handler(CommandHandler("random", self.random_command))
+        application.add_handler(CommandHandler("debug", self.debug_command))
         
         # Button callback handler
         application.add_handler(CallbackQueryHandler(self.button_callback))
@@ -614,9 +686,11 @@ class MinimalMemoryBot:
             self.handle_photo
         ))
         
-        # General message handler
+        # General message handler - IMPORTANT: This needs to catch all group messages
         application.add_handler(MessageHandler(
-            filters.ALL & ~filters.COMMAND & filters.ChatType.GROUPS,
+            (filters.TEXT | filters.VOICE | filters.AUDIO | filters.VIDEO | 
+             filters.DOCUMENT | filters.STICKER | filters.VIDEO_NOTE | filters.ANIMATION) & 
+            filters.ChatType.GROUPS & ~filters.COMMAND,
             self.store_message
         ))
         
