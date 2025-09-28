@@ -688,8 +688,6 @@ class MinimalMemoryBot:
         
         # General message handler - IMPORTANT: This needs to catch all group messages
         application.add_handler(MessageHandler(
-            (filters.TEXT | filters.VOICE | filters.AUDIO | filters.VIDEO | 
-             filters.DOCUMENT | filters.STICKER | filters.VIDEO_NOTE | filters.ANIMATION) & 
             filters.ChatType.GROUPS & ~filters.COMMAND,
             self.store_message
         ))
