@@ -698,7 +698,7 @@ class MinimalMemoryBot:
 
 if __name__ == "__main__":
     # IMPORTANT: Replace with your actual bot token
-    BOT_TOKEN = "8020313173:AAGm5R7rgX6DR5qhkCuVZpjgX9853lnmAMg"
+    BOT_TOKEN = "8020313173:AAG1V_ytdmVHCL7Jz0Y0MfGHgURe9G9pbnc"
     
     if not BOT_TOKEN or BOT_TOKEN == "YOUR_BOT_TOKEN_HERE":
         print("Please set your bot token!")
