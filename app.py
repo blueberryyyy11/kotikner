@@ -230,7 +230,7 @@ class MinimalMemoryBot:
         self.token = token
         self.db = DatabaseManager()
         self.active_chats = set()
-        
+    
     async def store_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         message = update.message
         if not message or message.from_user.is_bot:
@@ -647,17 +647,21 @@ class MinimalMemoryBot:
             debug_info += "Recent messages:\n"
             for msg in recent_messages:
                 timestamp = datetime.fromtimestamp(msg['timestamp']).strftime("%Y-%m-%d %H:%M")
-                debug_info += f"- {msg['username']} ({msg['message_type']}) at {timestamp}\n"
+                # Truncate text for display
+                text_preview = msg['text'][:30] + '...' if msg['text'] and len(msg['text']) > 30 else (msg['text'] or '')
+                debug_info += f"- {msg['username']} ({msg['message_type']}) @ {timestamp} | Content: {text_preview}\n"
         else:
             debug_info += "No messages found in database.\n"
         
         await update.message.reply_text(debug_info)
 
     def run(self):
+        """Builds and runs the Telegram bot application using run_polling."""
+        # 1. Build the Application
         application = Application.builder().token(self.token).build()
         
-        # Set bot commands for the / menu
-        async def post_init(app):
+        # 2. Set post_init hook for setting bot commands
+        async def post_init(app: Application):
             commands = [
                 BotCommand("start", "Start the bot and show menu"),
                 BotCommand("menu", "Show main menu"),
@@ -670,7 +674,7 @@ class MinimalMemoryBot:
         
         application.post_init = post_init
         
-        # Add handlers
+        # 3. Add handlers
         application.add_handler(CommandHandler("start", self.start_command))
         application.add_handler(CommandHandler("menu", self.menu_command))
         application.add_handler(CommandHandler("birthday", self.birthday_command))
@@ -680,27 +684,28 @@ class MinimalMemoryBot:
         # Button callback handler
         application.add_handler(CallbackQueryHandler(self.button_callback))
         
-        # Photo handler - should be before general message handler
+        # Photo handler - handles baby photo setting and stores the photo as memory
         application.add_handler(MessageHandler(
             filters.PHOTO & filters.ChatType.GROUPS,
             self.handle_photo
         ))
         
-        # General message handler - IMPORTANT: This needs to catch all group messages
+        # General message handler - Catches all non-command group messages for storage
         application.add_handler(MessageHandler(
             filters.ChatType.GROUPS & ~filters.COMMAND,
             self.store_message
         ))
         
         logger.info("Minimal Memory Bot starting...")
+        # 4. Start polling
         application.run_polling(drop_pending_updates=True)
 
 
 if __name__ == "__main__":
     # IMPORTANT: Replace with your actual bot token
-    BOT_TOKEN = "8020313173:AAG1V_ytdmVHCL7Jz0Y0MfGHgURe9G9pbnc"
+    BOT_TOKEN = "YOUR_ACTUAL_BOT_TOKEN_HERE"
     
-    if not BOT_TOKEN or BOT_TOKEN == "YOUR_BOT_TOKEN_HERE":
+    if not BOT_TOKEN or BOT_TOKEN == "YOUR_ACTUAL_BOT_TOKEN_HERE":
         print("Please set your bot token!")
         exit(1)
     
@@ -710,3 +715,6 @@ if __name__ == "__main__":
     except KeyboardInterrupt:
         logger.info("Bot stopped by user")
         print("Bot stopped gracefully")
+    except Exception as e:
+        logger.error(f"An unexpected error occurred during bot execution: {e}")
+        print(f"An unexpected error occurred: {e}")
