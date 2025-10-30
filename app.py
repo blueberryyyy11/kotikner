@@ -6,6 +6,7 @@ import logging
 from datetime import datetime, timedelta
 from dataclasses import dataclass
 from typing import List, Optional
+import os # Added for environment variable access
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, BotCommand
 from telegram.ext import (
@@ -702,11 +703,13 @@ class MinimalMemoryBot:
 
 
 if __name__ == "__main__":
-    # IMPORTANT: Replace with your actual bot token
-    BOT_TOKEN = "YOUR_ACTUAL_BOT_TOKEN_HERE"
+    # IMPORTANT: Get the bot token from an environment variable for security.
+    # Set TELEGRAM_BOT_TOKEN in your environment (e.g., in PythonAnywhere or your local shell).
+    BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
     
-    if not BOT_TOKEN or BOT_TOKEN == "YOUR_ACTUAL_BOT_TOKEN_HERE":
-        print("Please set your bot token!")
+    if not BOT_TOKEN:
+        print("CRITICAL ERROR: The TELEGRAM_BOT_TOKEN environment variable is not set.")
+        print("Please set this variable with your actual token (obtained from BotFather).")
         exit(1)
     
     try:
