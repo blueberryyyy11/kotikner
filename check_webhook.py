@@ -3,7 +3,7 @@ import json
 
 # --- YOUR CONFIGURATION ---
 # Bot Token provided by BotFather (Using the token from set_webhook.py)
-BOT_TOKEN = "8466519086:AAEMZmSACSrOnXWAf0txTc--_aioBkzBU9U"
+BOT_TOKEN = "8020313173:AAG1V_ytdmVHCL7Jz0Y0MfGHgURe9G9pbnc"
 # --------------------------
 
 # The Telegram API endpoint to get webhook information
